@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 
 """
-A ipython extension that supports cell magics:
- * pythontutor, and
- * pythontutor2
-for visualizing code in an iframe that leverages pythontutor.com
+A ipython extension that supports Jupyter cell and line magics 
+%ipythontutor
+for visualizing code in an iframe hosted on pythontutor.com
 
 See README.ipynb for examples of how to use it.
 """
@@ -13,6 +12,8 @@ import copy
 import webbrowser
 
 from urllib.parse import urlencode
+from distutils.util import strtobool
+
 from ipywidgets import HTML, Button, Output
 
 from IPython.core.magic import (
@@ -30,7 +31,7 @@ class Magics(CoreMagics):
     counter = 0
     def newid(self):
         Magics.counter += 1
-        return "ipythontutor{}".format(Magics.counter)
+        return f"ipythontutor{Magics.counter}"
     
 
     # settable attributes on the magic line
@@ -43,6 +44,7 @@ class Magics(CoreMagics):
         'curInstr' : 0,
         'cumulative' : 'false',
         'heapPrimitives' : 'false',
+        'textReferences' : 'false',
         'ratio': 1,
         # view in a new tab if true
         'linkButton' : 'false',
@@ -58,10 +60,9 @@ class Magics(CoreMagics):
                 if var in self.defaults:
                     env[var] = value
                 else:
-                    print("ipythontutor unknown parameter >{}< - ignored"
-                          .format(var))
+                    print(f"ipythontutor unknown parameter >{var}< - ignored")
             except:
-                print("ipythontutor - cannot understand {} - ignored".format(assign))
+                print(f"ipythontutor - cannot understand {assign} - ignored")
         # because the ratio applies on the iframe as a whole
         # there is a need to adjust the size so that width and height
         # are significant in the notebook space, not the iframe space
@@ -92,10 +93,8 @@ class Magics(CoreMagics):
         alpha = (1-r)/(2*r)
         offset_x = int(float(env['width'])*alpha)
         offset_y = int(float(env['height'])*alpha)
-        transform = "translate(-{offset_x}px, -{offset_y}px) scale({ratio})"\
-                    .format(ratio=env['ratio'], offset_x=offset_x, offset_y=offset_y)
-        return (  "{{transform: {transform};}}")\
-                .format(transform=transform)
+        transform = f"translate(-{offset_x}px, -{offset_y}px) scale({env['ratio']})"
+        return f"{{transform: {transform};}}"
         
 
     @cell_magic
@@ -112,25 +111,19 @@ class Magics(CoreMagics):
 
         request = urlencode(pt_env)
         
-        url = "{proto}://pythontutor.com/iframe-embed.html#{request}"\
-              .format(request=request, **env)
+        url = f"{env['proto']}://pythontutor.com/iframe-embed.html#{request}"
 
         # ----------------linkButton------------------------
-        # create the button
-        button = Button(description='Ouvrir dans un onglet')
-        my_output = Output()
-        
-        # if button clicked open in a new tab
-        def on_button_clicked(b):
-            with my_output:
-                webbrowser.open_new_tab(url)
+        if strtobool(env['linkButton']):
+            button = Button(description='Ouvrir dans un onglet')
+            output = Output()
 
-        # get click
-        button.on_click(on_button_clicked)
-        
-        # if true show button
-        if env['linkButton'] == 'true':
-            display(button, my_output)
+            def open_in_new_tab(b):
+                with output:
+                    webbrowser.open_new_tab(url)
+
+            button.on_click(open_in_new_tab)
+            display(button, output)
         # ---------------------------------------------------
         
         frameid = self.newid()
@@ -138,16 +131,16 @@ class Magics(CoreMagics):
         # max-width and max-height, but in this version it's still not quite right
         # and some real estate gets lots in the mix...
         containerid = self.newid()
-        fstyle = "<style>#{id} {style}</style>"\
-                .format(id=frameid, style=self.ratio_style(env))
-        iframe = ('<iframe id="{id}" class="pythontutor"'
-                  + ' width="{_ptwidth}" height="{_ptheight}"'
-                  + ' src="{url}">' )\
-                  .format(id=frameid, url=url, **env)
-        cstyle="<style>#{id} {{ max-width:{width}px; max-height:{height}px; box-sizing:border-box; }}</style>"\
-                .format(id=containerid, **env)
-        container = '<div id={id}>{iframe}</div>'\
-                              .format(id=containerid, iframe=iframe)
+        fstyle = f"<style>#{frameid} {self.ratio_style(env)}</style>"
+        ptwidth, ptheight = env['_ptwidth'], env['_ptheight']
+        iframe = (f'<iframe id="{frameid}" class="pythontutor"'
+                  f' width="{ptwidth}" height="{ptheight}"'
+                  f' src="{url}">')
+        cstyle = (f"<style>#{containerid} "
+                  f"{{ max-width:{env['width']}px; max-height:{env['height']}px; "
+                  f"box-sizing:border-box; }}"
+                  f"</style>")
+        container = f'<div id={containerid}>{iframe}</div>'
         #print(fstyle); print(cstyle); print(container)
         return HTML(fstyle + cstyle + container)
 
